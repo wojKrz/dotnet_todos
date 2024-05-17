@@ -1,0 +1,26 @@
+﻿@model IEnumerable<Zajęcia1_Todos.Controllers.TodoGroup>
+
+@{
+    ViewData["Title"] = "Index";
+}
+
+<h1>Index</h1>
+
+<p>
+    <a asp-action="Create">Create New</a>
+</p>
+<table class="table">
+    <tbody>
+@foreach (var item in Model) {
+        <tr>
+            <td>
+                <div >@Html.DisplayFor(modelItem => item.Day)</div>
+            </td>
+        </tr>
+            @foreach(var todo in item.Todos)
+            {
+                @(await Html.PartialAsync("_TodoItem", todo))
+            }
+        }
+    </tbody>
+</table>
