@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
@@ -13,17 +15,27 @@ namespace Zajęcia1_Todos.Controllers
     public class TodosController : Controller
     {
         private readonly ApplicationDbContext _context;
+        private readonly UserManager<IdentityUser> _userManager;
+        private readonly IAuthorizationService _authorizationService;
 
-        public TodosController(ApplicationDbContext context)
+        public TodosController(
+            ApplicationDbContext context,
+            UserManager<IdentityUser> userManager,
+            IAuthorizationService authorizationService)
         {
             _context = context;
+            _userManager = userManager;
+            _authorizationService = authorizationService;
         }
 
         // GET: Todos
         public async Task<IActionResult> Index()
         {
 
-            return View( _context.Todo.ToListAsync());
+            return View(await _context.TodoGroup
+                .Where(g => g.OwnerId == _userManager.GetUserId(User))
+                .Include(g => g.Todos)
+                .ToListAsync());
         }
 
         // GET: Todos/Details/5
@@ -36,6 +48,13 @@ namespace Zajęcia1_Todos.Controllers
 
             var todo = await _context.Todo
                 .FirstOrDefaultAsync(m => m.Id == id);
+            var authResult = await _authorizationService.AuthorizeAsync(User, todo, OwnershipOperations.Read);
+            if(!authResult.Succeeded)
+            {
+                return Forbid();
+            }
+
+
             if (todo == null)
             {
                 return NotFound();
@@ -54,25 +73,55 @@ namespace Zajęcia1_Todos.Controllers
         // To protect from overposting attacks, enable the specific properties you want to bind to.
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
-        public async Task<IActionResult> Create([Bind("Title,ForDay")] Todo todo)
+        public async Task<IActionResult> Create([Bind("Title,ForDay")] CreateTodoViewModel todoVM)
         {
             if (ModelState.IsValid)
             {
-                _context.Add(todo);
+                var group = await _context.TodoGroup.Where(g => g.ForDay == todoVM.ForDay).FirstOrDefaultAsync();
+                var userId = _userManager.GetUserId(User);
+                if(group == null)
+                {
+                    group = new TodoGroup() { 
+                        ForDay = todoVM.ForDay,
+                        OwnerId = userId
+                    };
+                    _context.Add(group);
+                }
+
+                var todo = new Todo()
+                {
+                    Title = todoVM.Title,
+                    OwnerId = userId
+                };
+                group.Todos.Add(todo);
+
                 await _context.SaveChangesAsync();
                 return RedirectToAction(nameof(Index));
             }
-            return View(todo);
+            return View(todoVM);
         }
 
-        // GET: Todos/Edit/5
-        public async Task<IActionResult> Edit(int? id)
+        [HttpPost, EnsureIdIsPresent]
+        public async Task<IActionResult> SetDone(int? id)
         {
-            if (id == null)
+            var todo = await _context.Todo.FindAsync(id);
+            if(todo == null)
             {
                 return NotFound();
             }
 
+            todo.IsDone = true;
+
+            _context.Update(todo);
+            await _context.SaveChangesAsync();
+
+            return RedirectToAction(nameof(Index));
+        }
+
+        // GET: Todos/Edit/5
+        [EnsureIdIsPresent]
+        public async Task<IActionResult> Edit(int? id)
+        {
             var todo = await _context.Todo.FindAsync(id);
             if (todo == null)
             {
@@ -117,12 +166,9 @@ namespace Zajęcia1_Todos.Controllers
         }
 
         // GET: Todos/Delete/5
+        [EnsureIdIsPresent]
         public async Task<IActionResult> Delete(int? id)
         {
-            if (id == null)
-            {
-                return NotFound();
-            }
 
             var todo = await _context.Todo
                 .FirstOrDefaultAsync(m => m.Id == id);

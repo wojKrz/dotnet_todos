@@ -1,4 +1,4 @@
-﻿@model IEnumerable<Zajęcia1_Todos.Controllers.TodoGroup>
+﻿@model IEnumerable<Zajęcia1_Todos.Models.TodoGroup>
 
 @{
     ViewData["Title"] = "Index";
@@ -14,7 +14,7 @@
 @foreach (var item in Model) {
         <tr>
             <td>
-                <div >@Html.DisplayFor(modelItem => item.Day)</div>
+                <div >@Html.DisplayFor(modelItem => item.ForDay)</div>
             </td>
         </tr>
             @foreach(var todo in item.Todos)
